@@ -51,7 +51,9 @@ function ResourceDetails({ resource }: { resource: Resource }) {
     <>
       <Header>
         <h1>{preview.name}</h1>
-        <Badge variant={preview.status === 'completed' ? 'success' : 'info'}>{preview.status}</Badge>
+        <Badge variant={preview.status === 'completed' ? 'success' : 'info'}>
+          {preview.status === 'completed' ? 'Completed' : 'Draft'}
+        </Badge>
       </Header>
       {unsaved ? <StatusMessage>These values include unsaved changes.</StatusMessage> : null}
       <ModuleList>

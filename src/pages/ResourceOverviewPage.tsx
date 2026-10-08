@@ -82,7 +82,9 @@ function ResourceOverview({ resource }: { resource: Resource }) {
         <h1>{resource.name}</h1>
         <HeaderActions>
           <DetailsLink to={`/resources/${resource.resourceId}/details`}>Details</DetailsLink>
-          <Badge variant={resource.status === 'completed' ? 'success' : 'info'}>{resource.status}</Badge>
+          <Badge variant={resource.status === 'completed' ? 'success' : 'info'}>
+            {resource.status === 'completed' ? 'Completed' : 'Draft'}
+          </Badge>
         </HeaderActions>
       </Header>
       {unsaved ? (

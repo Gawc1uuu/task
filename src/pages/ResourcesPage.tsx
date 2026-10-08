@@ -288,7 +288,9 @@ function ResourceCard({
       <CardRow>
         <ResourceName>{resource.name}</ResourceName>
         <CardActions>
-          <Badge variant={resource.status === 'completed' ? 'success' : 'info'}>{resource.status}</Badge>
+          <StatusBadge variant={resource.status === 'completed' ? 'success' : 'info'}>
+            {resource.status === 'completed' ? 'Completed' : 'Draft'}
+          </StatusBadge>
           <Button
             type="button"
             variant="secondary"
@@ -381,6 +383,14 @@ const CardActions = styled.div`
   display: flex;
   align-items: center;
   gap: ${({ theme }) => theme.spacing.sm};
+`
+
+const StatusBadge = styled(Badge)`
+  box-sizing: border-box;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+  line-height: normal;
 `
 
 const ResourceName = styled.h2`
