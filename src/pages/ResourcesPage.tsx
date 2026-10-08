@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import styled from 'styled-components'
 import { Pagination } from '../components/Pagination'
@@ -7,6 +8,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { usePagination } from '../hooks/usePagination'
 import {
   createResource,
+  deleteResource,
   listResources,
   validateResourceName,
   type Resource,
@@ -34,6 +36,7 @@ export function ResourcesPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [name, setName] = useState('')
   const [clientError, setClientError] = useState<string | null>(null)
+  const [resourceToDelete, setResourceToDelete] = useState<Resource | null>(null)
 
   const previousNameFilter = useRef(nameFilter)
 
@@ -68,6 +71,17 @@ export function ResourcesPage() {
 
   const items = resourcesQuery.data?.items ?? []
   const pagination = resourcesQuery.data?.pagination
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteResource,
+    onSuccess: async () => {
+      setResourceToDelete(null)
+      if (items.length === 1 && page > 1) {
+        changePage(page - 1)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['resources'] })
+    },
+  })
   const nameError =
     clientError ?? (createMutation.error instanceof Error ? createMutation.error.message : null)
 
@@ -83,6 +97,18 @@ export function ResourcesPage() {
       return
     }
     setIsDrawerOpen(false)
+  }
+
+  function openDeleteDrawer(resource: Resource) {
+    deleteMutation.reset()
+    setResourceToDelete(resource)
+  }
+
+  function closeDeleteDrawer() {
+    if (deleteMutation.isPending) {
+      return
+    }
+    setResourceToDelete(null)
   }
 
   function handleSortChange(event: ChangeEvent<HTMLSelectElement>) {
@@ -103,6 +129,7 @@ export function ResourcesPage() {
       setClientError(error)
       return
     }
+    setClientError(null)
     createMutation.mutate(name.trim())
   }
 
@@ -158,7 +185,7 @@ export function ResourcesPage() {
         {items.length > 0 ? (
           <List>
             {items.map((resource) => (
-              <ResourceCard key={resource._id} resource={resource} />
+              <ResourceCard key={resource._id} resource={resource} onDelete={openDeleteDrawer} />
             ))}
           </List>
         ) : null}
@@ -179,8 +206,8 @@ export function ResourcesPage() {
             name="resourceName"
             value={name}
             autoFocus
-            error={nameError ?? undefined}
             helperText="Letters, numbers, spaces, and hyphens."
+            error={nameError ?? undefined}
             onChange={(event) => {
               setName(event.target.value)
               setClientError(null)
@@ -192,19 +219,91 @@ export function ResourcesPage() {
           </Button>
         </CreateForm>
       </Drawer>
+
+      <Drawer
+        title="Delete resource"
+        isOpen={resourceToDelete !== null}
+        onClose={closeDeleteDrawer}
+      >
+        {resourceToDelete ? (
+          <DeletePanel>
+            <DeleteCopy>
+              Delete “{resourceToDelete.name}”? This cannot be undone.
+            </DeleteCopy>
+            {deleteMutation.error instanceof Error ? (
+              <DeleteError>{deleteMutation.error.message}</DeleteError>
+            ) : null}
+            <DeleteActions>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={deleteMutation.isPending}
+                onClick={closeDeleteDrawer}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate(resourceToDelete.resourceId)}
+              >
+                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </Button>
+            </DeleteActions>
+          </DeletePanel>
+        ) : null}
+      </Drawer>
     </Page>
   )
 }
 
-function ResourceCard({ resource }: { resource: Resource }) {
+function ResourceCard({
+  resource,
+  onDelete,
+}: {
+  resource: Resource
+  onDelete: (resource: Resource) => void
+}) {
+  const navigate = useNavigate()
+
+  function openResource() {
+    navigate(`/resources/${resource.resourceId}`)
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget || event.key !== 'Enter') {
+      return
+    }
+    openResource()
+  }
+
   return (
-    <Card variant="elevated">
+    <ResourceCardSurface
+      variant="elevated"
+      role="link"
+      tabIndex={0}
+      onClick={openResource}
+      onKeyDown={handleKeyDown}
+    >
       <CardRow>
         <ResourceName>{resource.name}</ResourceName>
-        <Badge variant={resource.status === 'completed' ? 'success' : 'info'}>{resource.status}</Badge>
+        <CardActions>
+          <Badge variant={resource.status === 'completed' ? 'success' : 'info'}>{resource.status}</Badge>
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            onClick={(event) => {
+              event.stopPropagation()
+              onDelete(resource)
+            }}
+          >
+            Delete
+          </Button>
+        </CardActions>
       </CardRow>
       <Meta>Added {formatCreatedAt(resource.createdAt)}</Meta>
-    </Card>
+    </ResourceCardSurface>
   )
 }
 
@@ -267,11 +366,21 @@ const StatusMessage = styled.p`
   color: ${({ theme }) => theme.colors.inkMuted};
 `
 
+const ResourceCardSurface = styled(Card)`
+  cursor: pointer;
+`
+
 const CardRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: ${({ theme }) => theme.spacing.md};
+`
+
+const CardActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
 `
 
 const ResourceName = styled.h2`
@@ -287,4 +396,23 @@ const Meta = styled.p`
 const CreateForm = styled.form`
   display: grid;
   gap: ${({ theme }) => theme.spacing.md};
+`
+
+const DeletePanel = styled.div`
+  display: grid;
+  gap: ${({ theme }) => theme.spacing.md};
+`
+
+const DeleteCopy = styled.p`
+  color: ${({ theme }) => theme.colors.ink};
+`
+
+const DeleteError = styled.p`
+  color: ${({ theme }) => theme.colors.warning};
+`
+
+const DeleteActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: ${({ theme }) => theme.spacing.sm};
 `
